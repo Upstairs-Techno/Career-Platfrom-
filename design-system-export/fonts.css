@@ -1,0 +1,52 @@
+/*
+ * fonts.css
+ * Upstairs Job Platform — "Ink + Acid Lime" Design System
+ *
+ * Font imports and font-family declarations.
+ * Drop this file into any project and @import it first.
+ *
+ * Source: frontend/src/index.css (line 1) + @theme token block
+ */
+
+/* ── Google Fonts import ─────────────────────────────────────────────────── */
+@import url('https://fonts.googleapis.com/css2?family=Nunito:wght@700;800;900&family=DM+Sans:wght@400;500;700&display=swap');
+
+/*
+ * Font families as CSS custom properties.
+ * Fallback chain: named font → system UI sans → system sans.
+ *
+ * --font-heading   Nunito      (700 bold, 800 extrabold, 900 black)
+ *                  → h1–h4 elements, buttons, nav logo, footer nav headers
+ *
+ * --font-body      DM Sans     (400 regular, 500 medium, 700 bold)
+ *                  → body text, paragraphs, labels, inputs, muted text
+ */
+:root {
+  --font-heading: 'Nunito', ui-sans-serif, system-ui, sans-serif;
+  --font-body:    'DM Sans',  ui-sans-serif, system-ui, sans-serif;
+}
+
+/* ── Global font assignment ──────────────────────────────────────────────── */
+html {
+  font-family: var(--font-body);
+}
+
+h1,
+h2,
+h3,
+h4 {
+  font-family: var(--font-heading);
+}
+
+/*
+ * USAGE NOTES:
+ *
+ * To use Nunito for a specific element, add:
+ *   font-family: var(--font-heading);
+ *
+ * To use DM Sans explicitly (already the global default):
+ *   font-family: var(--font-body);
+ *
+ * For code/monospace blocks, use the browser default:
+ *   font-family: ui-monospace, 'Cascadia Code', 'Source Code Pro', Menlo, Consolas, monospace;
+ */

@@ -1,0 +1,16 @@
+# Git and IDE
+.git
+.gitignore
+.idea
+*.iml
+.vscode
+.DS_Store
+
+# Build artifacts and logs
+target/
+*.log
+*.class
+
+# Docs & Commands
+docker-commands.txt
+README.md

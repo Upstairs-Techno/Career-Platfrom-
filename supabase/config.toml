@@ -1,0 +1,26 @@
+project_id = "rjsygmzalkakslrigcck"
+
+# All functions perform their own authorization. Admin functions call
+# requireAdmin(), which validates the Supabase Auth JWT and active admin row.
+[functions.admin-login]
+verify_jwt = false
+[functions.admin-profile]
+verify_jwt = false
+[functions.export-applications-csv]
+verify_jwt = false
+[functions.get-admin-resume-url]
+verify_jwt = false
+[functions.get-application-detail]
+verify_jwt = false
+[functions.get-dashboard-stats]
+verify_jwt = false
+[functions.list-applications]
+verify_jwt = false
+[functions.manage-referrals]
+verify_jwt = false
+[functions.submit-application]
+verify_jwt = false
+[functions.update-application-status]
+verify_jwt = false
+[functions.validate-referral]
+verify_jwt = false

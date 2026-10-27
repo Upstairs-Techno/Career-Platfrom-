@@ -1,0 +1,25 @@
+# Environment files and private credentials
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+*.pfx
+*.crt
+
+# Dependencies, builds, logs, and local data
+node_modules/
+dist/
+build/
+coverage/
+*.log
+*.dump
+*.backup
+*.bak
+*.sql.gz
+backend/target/
+backend/uploads/
+supabase/.temp/
+supabase/.branches/
+.DS_Store

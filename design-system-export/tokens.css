@@ -1,0 +1,104 @@
+/**
+ * tokens.css
+ * Upstairs Job Platform — "Ink + Acid Lime" Claymorphism Design Language v2
+ *
+ * Design Tokens / CSS Custom Properties
+ * Provides all surfaces, text colors, accents, states, fonts, radii, and shadows
+ * for any CSS / HTML project without needing Tailwind.
+ */
+
+:root {
+  /* ── Background & Surfaces ── */
+  --color-clay-bg: #F7F5F0;          /* Warm paper — main page background */
+  --color-clay-surface: #FFFFFF;     /* Crisp white card surface */
+  --color-clay-line: #E7E3DA;        /* Warm hairline border / divider */
+
+  /* ── Ink Text Palette ── */
+  --color-clay-text: #16181D;        /* Primary ink — text, deep headings, borders */
+  --color-clay-muted: #5A5E68;       /* Ink-soft — subtitles, body muted (WCAG AA on paper) */
+
+  /* ── Accent Palette: Acid Lime ── */
+  /* RULE: Lime is a light color. Use ONLY as a FILL with ink text on top. Never use as text on paper. */
+  --color-accent: #B6F03C;           /* Acid lime base fill */
+  --color-accent-bright: #C7F85A;    /* Acid lime hover */
+  --color-accent-light: #ECFBC8;     /* Pale lime tint fill */
+  --color-accent-dark: #3D5300;      /* Deep forest lime — ONLY lime token safe for text & links (WCAG AA) */
+
+  /* ── State & Status Colors ── */
+  --color-clay-success: #B6F03C;     /* Verdict success = acid lime */
+  --color-clay-warning: #E8A317;     /* Timer / warning = amber */
+  --color-clay-danger: #E11D48;      /* Error / danger = rose/red */
+  --color-clay-danger-dark: #BE123C; /* Error hover */
+
+  /* ── Code Editor Surface (Dark Mode Island) ── */
+  --color-code-bg: #0E0F13;          /* Dark editor canvas */
+  --color-code-fg: #E8E6DF;          /* Light editor text */
+
+  /* ── Typography Families ── */
+  --font-heading: 'Nunito', ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  --font-body: 'DM Sans', ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  --font-mono: ui-monospace, 'Cascadia Code', 'Source Code Pro', Menlo, Consolas, 'Liberation Mono', monospace;
+
+  /* ── Radii ── */
+  --radius-sm: 0.5rem;    /* 8px — chips, tags */
+  --radius-md: 0.75rem;   /* 12px — cards internal */
+  --radius-lg: 1rem;      /* 16px — inputs */
+  --radius-xl: 1.25rem;   /* 20px — cards, buttons (standard clay radius) */
+  --radius-full: 9999px;  /* Pill badges */
+
+  /* ── Claymorphism Shadows (Soft 3D layered elevation) ── */
+  /* Standard card shadow */
+  --shadow-clay-card:
+    0 8px 24px rgba(22, 24, 29, 0.09),
+    inset 0 2px 4px rgba(255, 255, 255, 0.9),
+    inset 0 -4px 8px rgba(22, 24, 29, 0.05);
+
+  /* Card hover shadow */
+  --shadow-clay-card-hover:
+    0 14px 36px rgba(22, 24, 29, 0.14),
+    inset 0 2px 4px rgba(255, 255, 255, 0.9),
+    inset 0 -4px 8px rgba(22, 24, 29, 0.05);
+
+  /* Primary button (lime) */
+  --shadow-clay-btn-primary:
+    0 6px 18px rgba(22, 24, 29, 0.18),
+    inset 0 2px 3px rgba(255, 255, 255, 0.55),
+    inset 0 -3px 6px rgba(22, 24, 29, 0.10);
+
+  /* Primary button hover */
+  --shadow-clay-btn-primary-hover:
+    0 10px 26px rgba(22, 24, 29, 0.22),
+    inset 0 2px 3px rgba(255, 255, 255, 0.55);
+
+  /* Ghost button (white card) */
+  --shadow-clay-btn-ghost:
+    0 4px 12px rgba(22, 24, 29, 0.08),
+    inset 0 2px 4px rgba(255, 255, 255, 0.9),
+    inset 0 -3px 6px rgba(22, 24, 29, 0.05);
+
+  /* Ghost button hover */
+  --shadow-clay-btn-ghost-hover:
+    0 8px 20px rgba(22, 24, 29, 0.12),
+    inset 0 2px 4px rgba(255, 255, 255, 0.9),
+    inset 0 -3px 6px rgba(22, 24, 29, 0.05);
+
+  /* Input inner sunken shadow */
+  --shadow-clay-input:
+    inset 0 2px 6px rgba(22, 24, 29, 0.06),
+    inset 0 -1px 2px rgba(255, 255, 255, 0.8);
+
+  /* Input focus ring shadow */
+  --shadow-clay-input-focus:
+    inset 0 2px 6px rgba(22, 24, 29, 0.06),
+    0 0 0 4px rgba(182, 240, 60, 0.35);
+
+  /* Pill badge shadow */
+  --shadow-clay-pill:
+    0 3px 8px rgba(22, 24, 29, 0.08),
+    inset 0 1px 2px rgba(255, 255, 255, 0.9);
+
+  /* ── Motion & Animation Easing Tokens ── */
+  --ease-clay-settle: cubic-bezier(0.22, 1, 0.36, 1); /* Signature easeOutExpo rhythm */
+  --transition-fast: 150ms ease-out;
+  --transition-normal: 200ms ease-out;
+}
