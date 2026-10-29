@@ -24,6 +24,7 @@ Deno.serve(async (req: Request) => {
   if (req.method === 'OPTIONS') return handleOptions()
   if (req.method !== 'POST') return errorResponse('Method not allowed', 405)
 
+  let step = 'request parsing'
   try {
     const contentType = req.headers.get('content-type') || ''
     const isMultipart = contentType.includes('multipart/form-data')
@@ -38,7 +39,12 @@ Deno.serve(async (req: Request) => {
     let resumeFile: File | null = null
 
     if (isMultipart) {
-      const formData = await req.formData()
+      let formData: FormData
+      try {
+        formData = await req.formData()
+      } catch {
+        return errorResponse('Invalid multipart form data.', 400)
+      }
       for (const [key, value] of formData.entries()) {
         if (key === 'resume' && value instanceof File) {
           resumeFile = value
@@ -47,10 +53,21 @@ Deno.serve(async (req: Request) => {
         }
       }
     } else {
-      fields = await req.json()
+      try {
+        const body: unknown = await req.json()
+        if (!body || typeof body !== 'object' || Array.isArray(body)) {
+          return errorResponse('Request body must be a JSON object.', 400)
+        }
+        fields = Object.fromEntries(
+          Object.entries(body).map(([key, value]) => [key, value == null ? '' : String(value)]),
+        )
+      } catch {
+        return errorResponse('Invalid JSON request body.', 400)
+      }
     }
 
     // ── Validate input ──────────────────────────────────────────────────────
+    step = 'input validation'
     let validationErrors: { field: string; message: string }[] = []
 
     if (type === 'ojt') {
@@ -86,7 +103,7 @@ Deno.serve(async (req: Request) => {
     }
 
     if (validationErrors.length > 0) {
-      return corsResponse({ errors: validationErrors, message: validationErrors[0].message }, 422)
+      return corsResponse({ errors: validationErrors, message: validationErrors[0].message }, 400)
     }
 
     // ── Validate resume (if provided) ───────────────────────────────────────
@@ -109,6 +126,7 @@ Deno.serve(async (req: Request) => {
       validatedResume = { file: resumeFile, ext, contentType }
     }
 
+    step = 'service client initialization'
     const supabase = createServiceClient()
 
     // ── Call transactional DB function ──────────────────────────────────────
@@ -117,6 +135,7 @@ Deno.serve(async (req: Request) => {
     let referralMessage: string | null = null
 
     if (type === 'ojt') {
+      step = 'OJT database submission'
       const { data, error } = await supabase.rpc('submit_ojt_application', {
         p_name:           fields.name.trim(),
         p_mobile:         fields.mobile.trim(),
@@ -132,12 +151,14 @@ Deno.serve(async (req: Request) => {
       })
 
       if (error) {
-        return _handleDbError(error)
+        return _handleDbError(error, step)
       }
+      if (!data?.[0]?.application_id) throw new Error('OJT submission returned no application id.')
       applicationId   = data[0].application_id
       studentName     = data[0].student_name
       referralMessage = data[0].referral_message
     } else {
+      step = 'internship database submission'
       const { data, error } = await supabase.rpc('submit_internship_application', {
         p_name:             fields.name.trim(),
         p_mobile:           fields.mobile.trim(),
@@ -153,8 +174,9 @@ Deno.serve(async (req: Request) => {
       })
 
       if (error) {
-        return _handleDbError(error)
+        return _handleDbError(error, step)
       }
+      if (!data?.[0]?.application_id) throw new Error('Internship submission returned no application id.')
       applicationId   = data[0].application_id
       studentName     = data[0].student_name
       referralMessage = data[0].referral_message
@@ -162,7 +184,8 @@ Deno.serve(async (req: Request) => {
 
     // ── Upload resume to Supabase Storage ───────────────────────────────────
     if (validatedResume) {
-      const storagePath = `${applicationId}/${applicationId}-resume${validatedResume.ext}`
+      step = 'resume storage upload'
+      const storagePath = `applications/${crypto.randomUUID()}/resume${validatedResume.ext}`
       const { error: uploadError } = await supabase.storage
         .from('resumes')
         .upload(storagePath, validatedResume.file, {
@@ -172,16 +195,18 @@ Deno.serve(async (req: Request) => {
 
       if (uploadError) {
         // Log but don't fail — application is already committed
-        console.error('[RESUME UPLOAD ERROR]', uploadError.message)
+        console.error(`[SUBMIT APPLICATION] step=${step}`, uploadError)
       } else {
         // Update application record with storage path
-        await supabase.rpc('update_resume_path', {
+        step = 'resume metadata update'
+        const { error: metadataError } = await supabase.rpc('update_resume_path', {
           p_application_id:       applicationId,
           p_resume_path:          storagePath,
           p_resume_file_name:     validatedResume.file.name,
           p_resume_content_type:  validatedResume.contentType,
           p_resume_file_size:     validatedResume.file.size,
         })
+        if (metadataError) console.error(`[SUBMIT APPLICATION] step=${step}`, metadataError)
       }
     }
 
@@ -205,12 +230,12 @@ Deno.serve(async (req: Request) => {
     }, 201)
 
   } catch (err) {
-    console.error('[SUBMIT APPLICATION ERROR]', err)
+    console.error(`[SUBMIT APPLICATION] step=${step}`, err)
     return errorResponse('An unexpected error occurred. Please try again.', 500)
   }
 })
 
-function _handleDbError(error: { message: string; code?: string }): Response {
+function _handleDbError(error: { message: string; code?: string }, step: string): Response {
   const msg = error.message || ''
   if (msg.includes('DUPLICATE_APPLICATION')) {
     return corsResponse({ message: msg.replace('DUPLICATE_APPLICATION: ', '') }, 409)
@@ -218,6 +243,12 @@ function _handleDbError(error: { message: string; code?: string }): Response {
   if (msg.includes('INVALID_REFERRAL')) {
     return corsResponse({ message: msg.replace('INVALID_REFERRAL: ', '') }, 400)
   }
-  console.error('[DB ERROR]', error)
+  if (error.code === '23505') {
+    return corsResponse({ message: 'An application already exists for this email address.' }, 409)
+  }
+  if (error.code === '23514' || error.code === '22P02' || error.code === '22001') {
+    return corsResponse({ message: 'Some application details are invalid. Please review the form and try again.' }, 400)
+  }
+  console.error(`[SUBMIT APPLICATION] step=${step}`, error)
   return errorResponse('Failed to submit application. Please try again.', 500)
 }
