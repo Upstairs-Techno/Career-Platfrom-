@@ -105,6 +105,41 @@ valid Supabase Auth credentials (for example, an invitation/password reset)
 unless a separately reviewed supported password-hash import is performed.
 The remote admin rows and Auth users were unavailable for verification.
 
+## Company application notifications
+
+OJT and Internship submissions run through the Supabase Edge Function, which
+already uses Resend for applicant confirmation emails. Company notifications
+reuse that Resend API integration; SMTP credentials are not used by this
+production request path. A database trigger writes one event to
+`application_notification_outbox` in the same transaction that assigns the
+final application ID. The submit function attempts immediate delivery. Failed
+events stay pending with exponential backoff, and the protected
+`dispatch-application-notifications` function can drain them later. The
+outbox and Resend idempotency key prevent duplicate notifications on retries.
+
+Configure these Supabase Edge Function secrets in the Dashboard's Edge
+Function Secrets (or use an ignored local env file based on
+`supabase/functions/.env.example`):
+
+- `RESEND_API_KEY`: a Resend API key; this is currently absent from the linked
+  project and must be configured before notifications can be sent.
+- `APP_EMAIL_FROM`: a sender address verified with the existing Resend account.
+- `APPLICATION_NOTIFICATION_EMAIL`: `contact@upstairstechno.com`.
+
+No SMTP host or mailbox password is required. Delivery uses the existing
+Resend HTTP API. The email includes the applicant's name, email, phone, program
+and track/domain title, application ID, and submission time. This platform
+does not have a separate jobs table or job ID. Resume links are omitted; staff
+must open documents through the authenticated admin portal.
+
+For automatic retries while no new application is being submitted, schedule
+an authenticated POST to
+`https://<project-ref>.supabase.co/functions/v1/dispatch-application-notifications`
+using the project's service-role key in the scheduler's secret store for both
+the `Authorization: Bearer ...` and `apikey` headers. Do not put that key in
+source code, a browser bundle, or a committed cron definition. The worker
+processes up to 20 due events per call.
+
 ## Edge Function deployment
 
 The checked-in `supabase/config.toml` disables the gateway JWT pre-check so the

@@ -18,35 +18,121 @@ async function sendEmail(opts: {
   subject: string
   html: string
   text: string
+  idempotencyKey?: string
 }): Promise<void> {
   const apiKey = Deno.env.get('RESEND_API_KEY')
   const from = Deno.env.get('APP_EMAIL_FROM') || 'hr@upstairstechno.com'
 
   if (!apiKey) {
-    console.warn('[EMAIL DISABLED] RESEND_API_KEY not set. Would send to:', opts.to, '| Subject:', opts.subject)
-    return
+    throw new EmailDeliveryError('provider_not_configured')
+  }
+  if (/[\r\n]/.test(from) || /[\r\n]/.test(opts.to) || /[\r\n]/.test(opts.subject)) {
+    throw new EmailDeliveryError('invalid_email_header')
   }
 
-  const response = await fetch(RESEND_API_URL, {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${apiKey}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
-      from: `UPSTAIRS TECHNO <${from}>`,
-      to: [opts.to],
-      subject: opts.subject,
-      html: opts.html,
-      text: opts.text,
-    }),
-  })
+  let response: Response
+  try {
+    response = await fetch(RESEND_API_URL, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        'Content-Type': 'application/json',
+        ...(opts.idempotencyKey ? { 'Idempotency-Key': opts.idempotencyKey } : {}),
+      },
+      body: JSON.stringify({
+        from: `UPSTAIRS TECHNO <${from}>`,
+        to: [opts.to],
+        subject: opts.subject,
+        html: opts.html,
+        text: opts.text,
+      }),
+      signal: AbortSignal.timeout(10_000),
+    })
+  } catch {
+    throw new EmailDeliveryError('provider_unavailable')
+  }
 
   if (!response.ok) {
-    const body = await response.text()
-    // Log error but DO NOT throw — email failure must not roll back DB operations
-    console.error(`[EMAIL ERROR] Status ${response.status}: ${body}`)
+    // Provider response bodies can contain submitted data; never log them.
+    throw new EmailDeliveryError(`provider_http_${response.status}`)
   }
+}
+
+export class EmailDeliveryError extends Error {
+  readonly code: string
+
+  constructor(code: string) {
+    super('Email notification delivery failed.')
+    this.name = 'EmailDeliveryError'
+    this.code = code
+  }
+}
+
+export interface CompanyApplicationNotification {
+  notificationId: string
+  applicationId: string
+  applicationType: 'OJT' | 'INTERNSHIP'
+  applicantName: string
+  applicantEmail: string
+  applicantPhone: string
+  programTitle: string
+  submittedAt: string
+}
+
+function safePlainText(value: string): string {
+  return value.replace(/[\u0000-\u001f\u007f]/g, ' ').trim()
+}
+
+/** Notify the company for a newly persisted application using the durable outbox ID for deduplication. */
+export async function sendCompanyApplicationNotification(
+  application: CompanyApplicationNotification,
+): Promise<void> {
+  const recipient = Deno.env.get('APPLICATION_NOTIFICATION_EMAIL')
+  if (!recipient || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(recipient)) {
+    throw new EmailDeliveryError('recipient_not_configured')
+  }
+
+  const title = safePlainText(application.programTitle)
+  const subject = `New Job Application Received – ${title}`
+  const safeName = escapeHtml(safePlainText(application.applicantName))
+  const safeEmail = escapeHtml(safePlainText(application.applicantEmail))
+  const safePhone = escapeHtml(safePlainText(application.applicantPhone))
+  const safeTitle = escapeHtml(title)
+  const safeApplicationId = escapeHtml(safePlainText(application.applicationId))
+  const safeSubmittedAt = escapeHtml(new Date(application.submittedAt).toISOString())
+  const text = [
+    'A new application has been received.',
+    `Applicant: ${safePlainText(application.applicantName)}`,
+    `Email: ${safePlainText(application.applicantEmail)}`,
+    `Phone: ${safePlainText(application.applicantPhone)}`,
+    `Program / job title: ${title}`,
+    `Application type: ${application.applicationType}`,
+    `Application ID: ${safePlainText(application.applicationId)}`,
+    `Submitted: ${safeSubmittedAt}`,
+  ].join('\n')
+  const html = `
+    <div style="font-family:Arial,sans-serif;max-width:640px;margin:0 auto;padding:24px;color:#172033">
+      <h2 style="color:#1e3a5f;margin:0 0 8px">UPSTAIRS TECHNO</h2>
+      <p style="color:#475569;margin:0 0 20px">A new application has been received.</p>
+      <table style="border-collapse:collapse;width:100%">
+        <tr><td style="padding:8px;border-bottom:1px solid #e2e8f0"><strong>Applicant</strong></td><td style="padding:8px;border-bottom:1px solid #e2e8f0">${safeName}</td></tr>
+        <tr><td style="padding:8px;border-bottom:1px solid #e2e8f0"><strong>Email</strong></td><td style="padding:8px;border-bottom:1px solid #e2e8f0">${safeEmail}</td></tr>
+        <tr><td style="padding:8px;border-bottom:1px solid #e2e8f0"><strong>Phone</strong></td><td style="padding:8px;border-bottom:1px solid #e2e8f0">${safePhone}</td></tr>
+        <tr><td style="padding:8px;border-bottom:1px solid #e2e8f0"><strong>Program / job title</strong></td><td style="padding:8px;border-bottom:1px solid #e2e8f0">${safeTitle}</td></tr>
+        <tr><td style="padding:8px;border-bottom:1px solid #e2e8f0"><strong>Application type</strong></td><td style="padding:8px;border-bottom:1px solid #e2e8f0">${application.applicationType}</td></tr>
+        <tr><td style="padding:8px;border-bottom:1px solid #e2e8f0"><strong>Application ID</strong></td><td style="padding:8px;border-bottom:1px solid #e2e8f0">${safeApplicationId}</td></tr>
+        <tr><td style="padding:8px"><strong>Submitted</strong></td><td style="padding:8px">${safeSubmittedAt}</td></tr>
+      </table>
+      <p style="font-size:12px;color:#64748b;margin-top:20px">Review applicant documents through the authenticated admin portal.</p>
+    </div>`
+
+  await sendEmail({
+    to: recipient,
+    subject,
+    html,
+    text,
+    idempotencyKey: `application-notification-${application.notificationId}`,
+  })
 }
 
 /** Sent immediately after OJT or Internship application is submitted */

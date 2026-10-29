@@ -4,6 +4,8 @@ project_id = "rjsygmzalkakslrigcck"
 # requireAdmin(), which validates the Supabase Auth JWT and active admin row.
 [functions.admin-login]
 verify_jwt = false
+[functions.dispatch-application-notifications]
+verify_jwt = false
 [functions.admin-profile]
 verify_jwt = false
 [functions.export-applications-csv]

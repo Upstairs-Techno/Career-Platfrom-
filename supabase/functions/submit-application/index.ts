@@ -11,6 +11,7 @@ import {
   OjtApplicationInput, InternshipApplicationInput,
 } from '../_shared/validation.ts'
 import { sendApplicationReceived } from '../_shared/email.ts'
+import { dispatchApplicationNotifications } from '../_shared/notification-outbox.ts'
 
 const MAX_RESUME_BYTES = 5 * 1024 * 1024 // 5 MB
 const ALLOWED_EXTENSIONS = ['.pdf', '.doc', '.docx']
@@ -208,6 +209,14 @@ Deno.serve(async (req: Request) => {
         })
         if (metadataError) console.error(`[SUBMIT APPLICATION] step=${step}`, metadataError)
       }
+    }
+
+    // A database trigger enqueued this event atomically with the application.
+    // Attempt immediate delivery; failures remain in the outbox for retry.
+    step = 'company notification dispatch'
+    const notificationResult = await dispatchApplicationNotifications(supabase, { applicationId })
+    if (notificationResult.queued > 0) {
+      console.warn('[SUBMIT APPLICATION] company notification queued for retry')
     }
 
     // ── Send confirmation email (non-blocking) ──────────────────────────────
