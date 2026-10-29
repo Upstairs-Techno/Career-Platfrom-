@@ -7,8 +7,12 @@ Deno.serve(async (req: Request) => {
   if (req.method === 'OPTIONS') return handleOptions()
   if (req.method !== 'POST') return errorResponse('Method not allowed.', 405)
 
-  const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')
-  if (!serviceRoleKey || req.headers.get('Authorization') !== `Bearer ${serviceRoleKey}`) {
+  const workerToken = Deno.env.get('APPLICATION_NOTIFICATION_WORKER_TOKEN')
+  if (!workerToken) {
+    console.error('[APPLICATION NOTIFICATION WORKER] worker token is not configured')
+    return errorResponse('Notification worker is not configured.', 503)
+  }
+  if (req.headers.get('x-notification-worker-token') !== workerToken) {
     return errorResponse('Unauthorized.', 401)
   }
 

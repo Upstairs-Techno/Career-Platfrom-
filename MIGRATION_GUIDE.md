@@ -125,6 +125,8 @@ Function Secrets (or use an ignored local env file based on
   project and must be configured before notifications can be sent.
 - `APP_EMAIL_FROM`: a sender address verified with the existing Resend account.
 - `APPLICATION_NOTIFICATION_EMAIL`: `contact@upstairstechno.com`.
+- `APPLICATION_NOTIFICATION_WORKER_TOKEN`: a long random token used only to
+  authorize scheduled calls to the retry worker.
 
 No SMTP host or mailbox password is required. Delivery uses the existing
 Resend HTTP API. The email includes the applicant's name, email, phone, program
@@ -135,10 +137,11 @@ must open documents through the authenticated admin portal.
 For automatic retries while no new application is being submitted, schedule
 an authenticated POST to
 `https://<project-ref>.supabase.co/functions/v1/dispatch-application-notifications`
-using the project's service-role key in the scheduler's secret store for both
-the `Authorization: Bearer ...` and `apikey` headers. Do not put that key in
-source code, a browser bundle, or a committed cron definition. The worker
-processes up to 20 due events per call.
+using the project's publishable key in the `apikey` header, and
+`APPLICATION_NOTIFICATION_WORKER_TOKEN` in the
+`x-notification-worker-token` header. Store both values in the scheduler's
+secret store; do not put either in source code, a browser bundle, or a
+committed cron definition. The worker processes up to 20 due events per call.
 
 ## Edge Function deployment
 

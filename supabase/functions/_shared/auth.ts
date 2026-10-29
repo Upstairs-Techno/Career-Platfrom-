@@ -87,7 +87,7 @@ export function createServiceClient() {
   )
 }
 
-function getServerSecretKey(): string {
+export function getServerSecretKey(): string {
   const key = Deno.env.get('SUPABASE_SECRET_KEY') || Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')
   if (!key) throw new Error('Supabase server-side secret is not configured.')
   return key
