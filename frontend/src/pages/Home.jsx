@@ -35,7 +35,7 @@ const featuredTracks = [
 export default function Home() {
   return (
     <div>
-      {/* Hero with a visible image and restrained readability overlay */}
+      {/* Hero with the original background image colors */}
       <section className="relative min-h-[85vh] flex items-start justify-center overflow-hidden border-b border-slate-200/80 bg-white sm:items-center">
         <div className="absolute inset-0 z-0 overflow-hidden">
           <img
@@ -43,8 +43,6 @@ export default function Home() {
             alt="Upstairs Techno Team and Workspace"
             className="h-full w-full object-cover object-center"
           />
-          <div className="absolute inset-0 bg-gradient-to-b from-white/35 via-white/45 to-white/75" />
-          <div className="absolute inset-0 bg-gradient-to-r from-white/65 via-white/15 to-white/65" />
         </div>
 
         {/* Content Container */}

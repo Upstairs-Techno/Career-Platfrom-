@@ -12,21 +12,21 @@ export default function Navbar() {
   const [open, setOpen] = useState(false)
 
   return (
-    <header className="sticky top-0 z-40 border-b border-slate-200/80 bg-white/95 backdrop-blur-md transition-colors shadow-xs">
-      <nav className="container-page flex h-18 items-center justify-between py-3">
-        <Link to="/" className="flex items-center gap-3 group">
-          <div className="relative flex h-11 w-11 shrink-0 items-center justify-center overflow-hidden rounded-xl border border-slate-200 bg-slate-950 p-0.5 shadow-sm transition-all duration-300 group-hover:border-blue-400 group-hover:shadow-[0_0_12px_rgba(0,119,238,0.2)]">
+    <header className="sticky top-0 z-40 border-b border-slate-200/80 bg-white/95 shadow-sm backdrop-blur-md">
+      <nav className="container-page flex h-20 items-center justify-between">
+        <Link to="/" className="group flex min-w-0 items-center gap-3">
+          <div className="relative flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-xl border border-slate-200 bg-slate-950 p-0.5 shadow-sm transition-all duration-300 group-hover:border-blue-400 group-hover:shadow-[0_0_12px_rgba(0,119,238,0.2)]">
             <img
               src="/Upstairs Logo.jpeg"
               alt="Upstairs Techno Logo"
               className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105"
             />
           </div>
-          <div className="leading-tight">
-            <span className="block text-base sm:text-lg font-extrabold tracking-tight text-slate-900 transition-colors group-hover:text-blue-600">
+          <div className="min-w-0 leading-tight">
+            <span className="block font-heading text-base font-black tracking-tight text-slate-900 transition-colors group-hover:text-blue-600 sm:text-lg">
               UPSTAIRS TECHNO
             </span>
-            <span className="block text-[10px] sm:text-[11px] font-bold uppercase tracking-widest text-blue-600">
+            <span className="block font-heading text-[10px] font-bold uppercase tracking-widest text-blue-600 sm:text-[11px]">
               Innovate • Integrate • Elevate
             </span>
           </div>
