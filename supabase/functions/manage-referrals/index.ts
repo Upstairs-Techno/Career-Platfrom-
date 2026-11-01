@@ -4,8 +4,16 @@
 
 import { corsResponse, errorResponse, handleOptions } from '../_shared/cors.ts'
 import { requireAdmin, createServiceClient, AuthError } from '../_shared/auth.ts'
+import { normalizeIndianMobile } from '../_shared/validation.ts'
 
 const ALPHANUMERIC = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'
+
+function hasUnsafeText(value: string): boolean {
+  return /[<>]/.test(value) || [...value].some((character) => {
+    const code = character.charCodeAt(0)
+    return code < 32 || code === 127
+  })
+}
 
 function generateUniqueCode(): string {
   let result = 'UPTECH'
@@ -13,6 +21,25 @@ function generateUniqueCode(): string {
     result += ALPHANUMERIC.charAt(Math.floor(Math.random() * ALPHANUMERIC.length))
   }
   return result
+}
+
+function validateReferralRecord(record: Record<string, unknown>, usedCount = 0): string | null {
+  const memberName = typeof record.memberName === 'string' ? record.memberName.trim() : ''
+  const mobile = typeof record.mobileNumber === 'string' ? record.mobileNumber.trim() : ''
+  const email = typeof record.email === 'string' ? record.email.trim() : ''
+  if (!/^[\p{L}][\p{L}\p{M} .'-]{1,149}$/u.test(memberName)) return 'Enter a valid team member name.'
+  if (!/^(?:\+91[\s-]?)?[6-9]\d{9}$/.test(mobile)) return 'Enter a valid 10-digit Indian mobile number, optionally prefixed with +91.'
+  if (email.length > 150 || !/^(?=.{1,150}$)[A-Za-z0-9.!#$%&'*+/=?^_`{|}~-]+@(?:[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?\.)+[A-Za-z]{2,63}$/.test(email)) return 'Enter a valid email address.'
+  if (!['Male', 'Female', 'Other', 'Prefer not to say'].includes(String(record.gender))) return 'Select a valid gender option.'
+  if (record.code !== undefined && record.code !== null && record.code !== '' &&
+      (typeof record.code !== 'string' || !/^[A-Z0-9_-]{2,50}$/i.test(record.code.trim()))) return 'Referral code must contain 2–50 letters, numbers, hyphens, or underscores.'
+  if (record.description !== undefined && record.description !== null &&
+      (typeof record.description !== 'string' || record.description.trim().length > 500 || hasUnsafeText(record.description))) return 'Description must be 500 characters or fewer and contain plain text.'
+  const maxUses = record.maxUses
+  if (typeof maxUses !== 'number' || !Number.isInteger(maxUses) || maxUses < Math.max(1, usedCount) || maxUses > 1000000) return `Max uses must be a whole number from ${Math.max(1, usedCount)} to 1,000,000.`
+  if (record.expiresAt && (typeof record.expiresAt !== 'string' || !/^\d{4}-\d{2}-\d{2}(?:T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z)?$/.test(record.expiresAt) || Number.isNaN(Date.parse(record.expiresAt)))) return 'Enter a valid expiry date.'
+  if (record.active !== undefined && typeof record.active !== 'boolean') return 'Referral code status is invalid.'
+  return null
 }
 
 Deno.serve(async (req: Request) => {
@@ -93,6 +120,9 @@ Deno.serve(async (req: Request) => {
     // -------------------------------------------------------------------------
     if (req.method === 'POST') {
       const body = await req.json().catch(() => ({}))
+      if (!body || typeof body !== 'object' || Array.isArray(body)) return errorResponse('Invalid referral data.', 400)
+      const validationError = validateReferralRecord({ ...body, maxUses: body.maxUses ?? 100 })
+      if (validationError) return errorResponse(validationError, 422)
       let code = body.code ? body.code.trim().toUpperCase() : ''
 
       if (!code) {
@@ -118,18 +148,15 @@ Deno.serve(async (req: Request) => {
         }
       }
 
-      const maxUses = body.maxUses ? parseInt(body.maxUses, 10) : 100
-      if (maxUses <= 0) {
-        return errorResponse('Max uses must be greater than 0.', 400)
-      }
+      const maxUses = body.maxUses ?? 100
 
       const createdBy = admin.name || admin.loginId || 'ADMIN'
 
       const insertPayload = {
         code,
-        member_name: body.memberName || null,
-        mobile_number: body.mobileNumber || null,
-        email: body.email || null,
+        member_name: body.memberName.trim(),
+        mobile_number: normalizeIndianMobile(body.mobileNumber.trim()),
+        email: body.email.trim().toLowerCase(),
         gender: body.gender || null,
         description: body.description || null,
         max_uses: maxUses,
@@ -157,6 +184,7 @@ Deno.serve(async (req: Request) => {
     // -------------------------------------------------------------------------
     if (req.method === 'PUT') {
       const body = await req.json().catch(() => ({}))
+      if (!body || typeof body !== 'object' || Array.isArray(body)) return errorResponse('Invalid referral data.', 400)
       const targetId = id || body.id
       if (!targetId) {
         return errorResponse('Referral code ID is required for update.', 400)
@@ -172,9 +200,23 @@ Deno.serve(async (req: Request) => {
         return errorResponse('Referral code not found.', 404)
       }
 
+      const candidate = {
+        memberName: body.memberName !== undefined ? body.memberName : existing.member_name,
+        mobileNumber: body.mobileNumber !== undefined ? body.mobileNumber : existing.mobile_number,
+        email: body.email !== undefined ? body.email : existing.email,
+        gender: body.gender !== undefined ? body.gender : existing.gender,
+        code: body.code !== undefined ? body.code : existing.code,
+        description: body.description !== undefined ? body.description : existing.description,
+        maxUses: body.maxUses !== undefined ? body.maxUses : existing.max_uses,
+        expiresAt: body.expiresAt !== undefined ? body.expiresAt : existing.expires_at,
+        active: body.active !== undefined ? body.active : existing.active,
+      }
+      const validationError = validateReferralRecord(candidate, existing.used_count)
+      if (validationError) return errorResponse(validationError, 422)
+
       const updates: Record<string, any> = {}
 
-      if (body.code !== undefined && body.code.trim()) {
+      if (typeof body.code === 'string' && body.code.trim()) {
         const newCode = body.code.trim().toUpperCase()
         if (newCode.toLowerCase() !== existing.code.toLowerCase()) {
           const { count } = await supabase
@@ -189,13 +231,13 @@ Deno.serve(async (req: Request) => {
         }
       }
 
-      if (body.memberName !== undefined) updates.member_name = body.memberName
-      if (body.mobileNumber !== undefined) updates.mobile_number = body.mobileNumber
-      if (body.email !== undefined) updates.email = body.email
+      if (body.memberName !== undefined) updates.member_name = body.memberName.trim()
+      if (body.mobileNumber !== undefined) updates.mobile_number = normalizeIndianMobile(body.mobileNumber.trim())
+      if (body.email !== undefined) updates.email = body.email.trim().toLowerCase()
       if (body.gender !== undefined) updates.gender = body.gender
-      if (body.description !== undefined) updates.description = body.description
+      if (body.description !== undefined) updates.description = typeof body.description === 'string' ? body.description.trim() || null : null
       if (body.maxUses !== undefined) {
-        const maxUses = parseInt(body.maxUses, 10)
+        const maxUses = body.maxUses
         if (maxUses < existing.used_count) {
           return errorResponse(`Max uses cannot be less than the current used count (${existing.used_count}).`, 400)
         }

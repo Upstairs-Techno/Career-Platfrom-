@@ -11,7 +11,7 @@ export default function AdminLoginPage() {
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState('')
 
-  const { register, handleSubmit, formState: { errors } } = useForm()
+  const { register, handleSubmit, formState: { errors } } = useForm({ mode: 'onTouched', reValidateMode: 'onChange' })
 
   const onSubmit = async (data) => {
     setError('')
@@ -48,7 +48,7 @@ export default function AdminLoginPage() {
           <p className="text-xs font-bold uppercase tracking-[0.25em] text-blue-600 font-heading">Admin Portal</p>
         </div>
 
-        <form onSubmit={handleSubmit(onSubmit)} className="clay-card !p-8 backdrop-blur-xl">
+        <form noValidate onSubmit={handleSubmit(onSubmit)} className="clay-card !p-8 backdrop-blur-xl">
           <h2 className="text-xl font-black text-slate-900 tracking-tight font-heading">Admin Sign In</h2>
           <p className="mt-1 text-xs text-slate-500 font-medium">Enter your administrative credentials to continue</p>
 
@@ -64,7 +64,12 @@ export default function AdminLoginPage() {
               <User size={18} className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
               <input
                 className={`input-field pl-10 ${errors.loginId ? 'input-error' : ''}`}
-                {...register('loginId', { required: 'Login ID is required' })}
+                aria-invalid={Boolean(errors.loginId)}
+                {...register('loginId', {
+                  required: 'Login ID is required.',
+                  validate: (value) => Boolean(value?.trim()) || 'Login ID cannot be only spaces.',
+                  maxLength: { value: 100, message: 'Login ID must be 100 characters or fewer.' },
+                })}
                 autoComplete="username"
                 placeholder="Enter login ID"
               />
@@ -79,7 +84,12 @@ export default function AdminLoginPage() {
               <input
                 type="password"
                 className={`input-field pl-10 ${errors.password ? 'input-error' : ''}`}
-                {...register('password', { required: 'Password is required' })}
+                aria-invalid={Boolean(errors.password)}
+                {...register('password', {
+                  required: 'Password is required.',
+                  validate: (value) => Boolean(value?.trim()) || 'Password cannot be empty or only spaces.',
+                  maxLength: { value: 1024, message: 'Password is too long.' },
+                })}
                 autoComplete="current-password"
                 placeholder="••••••••"
               />

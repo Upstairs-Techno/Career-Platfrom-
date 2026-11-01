@@ -9,6 +9,7 @@ import {
 import { submitOjtApplication } from '../services/ojtService'
 import { validateReferralCode } from '../services/referralService'
 import { TRACK_LABELS } from '../utils/formatters'
+import { fieldRules, firstInvalidField, normalizeIndianMobile, validateResumeFile } from '../utils/validation'
 import { WhatsAppChatButton } from '../components/WhatsAppButton'
 
 const STEPS = ['Personal Details', 'Education', 'OJT Details', 'Confirm']
@@ -27,10 +28,13 @@ export default function OjtApplyPage() {
   // Resume state
   const [resumeFile, setResumeFile] = useState(null)
   const [resumeError, setResumeError] = useState(null)
+  const [checkingResume, setCheckingResume] = useState(false)
 
   const {
-    register, handleSubmit, trigger, watch, formState: { errors },
+    register, handleSubmit, trigger, watch, setFocus, setError, formState: { errors },
   } = useForm({
+    mode: 'onTouched',
+    reValidateMode: 'onChange',
     defaultValues: {
       gender: '', course: '', trainingMode: '', track: '', durationWeeks: '',
     },
@@ -41,22 +45,24 @@ export default function OjtApplyPage() {
   const stepFields = [
     ['name', 'mobile', 'email', 'gender'],
     ['college', 'course', 'year'],
-    ['durationWeeks', 'trainingMode', 'track'],
+    ['durationWeeks', 'trainingMode', 'track', 'referralCode'],
     [],
   ]
 
   const next = async () => {
-    const valid = await trigger(stepFields[step])
+    if (step === 2 && (resumeError || checkingResume)) return
+    const valid = await trigger(stepFields[step], { shouldFocus: true })
     if (valid) setStep((s) => Math.min(s + 1, STEPS.length - 1))
   }
   const back = () => setStep((s) => Math.max(s - 1, 0))
 
   const checkReferral = async () => {
-    const code = values.referralCode
+    const code = values.referralCode?.trim()
     if (!code) {
       setReferralStatus(null)
       return
     }
+    if (!(await trigger('referralCode'))) return
     setCheckingReferral(true)
     try {
       const { data } = await validateReferralCode(code)
@@ -71,23 +77,27 @@ export default function OjtApplyPage() {
   const handleResumeChange = (e) => {
     const file = e.target.files?.[0]
     if (!file) return
-    validateAndSetResume(file)
+    validateAndSetResume(file, e.target)
   }
 
-  const validateAndSetResume = (file) => {
-    setResumeError(null)
-    const allowed = ['.pdf', '.doc', '.docx']
-    const ext = '.' + file.name.split('.').pop().toLowerCase()
-    if (!allowed.includes(ext)) {
-      setResumeError('Only PDF, DOC, and DOCX files are allowed.')
-      return
+  const validateAndSetResume = async (file, input) => {
+    setCheckingResume(true)
+    try {
+      const error = await validateResumeFile(file)
+      setResumeError(error)
+      if (error) {
+        setResumeFile(null)
+        if (input) input.value = ''
+        return
+      }
+      setResumeFile(file)
+    } catch {
+      setResumeError('The selected file could not be checked. Please choose it again.')
+      setResumeFile(null)
+      if (input) input.value = ''
+    } finally {
+      setCheckingResume(false)
     }
-    const maxBytes = 5 * 1024 * 1024 // 5 MB
-    if (file.size > maxBytes) {
-      setResumeError('File size exceeds the 5 MB limit. Please select a smaller file.')
-      return
-    }
-    setResumeFile(file)
   }
 
   const removeResume = () => {
@@ -103,11 +113,12 @@ export default function OjtApplyPage() {
   }
 
   const onSubmit = async (data) => {
+    if (resumeError) return
     setSubmitting(true)
     try {
       const formData = new FormData()
       formData.append('name', data.name)
-      formData.append('mobile', data.mobile)
+      formData.append('mobile', normalizeIndianMobile(data.mobile))
       formData.append('email', data.email)
       formData.append('gender', data.gender)
       formData.append('college', data.college)
@@ -127,9 +138,35 @@ export default function OjtApplyPage() {
       toast.success('Application submitted successfully!')
       navigate('/application-success', { state: { application: result } })
     } catch (err) {
-      toast.error(err.response?.data?.message || err.friendlyMessage || 'Submission failed.')
+      const message = err.response?.data?.message || err.friendlyMessage || 'Submission failed.'
+      if (resumeFile && /resume|file|document/i.test(message)) setResumeError(message)
+      const serverErrors = err.response?.data?.errors || []
+      const invalidFields = {}
+      serverErrors.forEach(({ field, message }) => {
+        if (stepFields.some((fields) => fields.includes(field))) {
+          invalidFields[field] = true
+          setError(field, { type: 'server', message })
+        }
+      })
+      const invalidStep = firstInvalidField(invalidFields, stepFields)
+      if (invalidStep >= 0) {
+        setStep(invalidStep)
+        requestAnimationFrame(() => setFocus(stepFields[invalidStep].find((field) => invalidFields[field])))
+      }
+      toast.error(message)
     } finally {
       setSubmitting(false)
+    }
+  }
+
+  const onInvalid = (formErrors) => {
+    const invalidStep = firstInvalidField(formErrors, stepFields)
+    if (invalidStep >= 0) {
+      setStep(invalidStep)
+      requestAnimationFrame(() => {
+        const firstField = stepFields[invalidStep].find((field) => formErrors[field])
+        if (firstField) setFocus(firstField, { shouldSelect: true })
+      })
     }
   }
 
@@ -169,27 +206,27 @@ export default function OjtApplyPage() {
           ))}
         </div>
 
-        <form onSubmit={handleSubmit(onSubmit)} className="mt-10 clay-card !p-6 sm:!p-10">
+        <form noValidate onSubmit={handleSubmit(onSubmit, onInvalid)} className="mt-10 clay-card !p-6 sm:!p-10">
           {step === 0 && (
             <div className="space-y-5">
               <div>
                 <label className="label-field">Full Name *</label>
-                <input className={`input-field ${errors.name ? 'input-error' : ''}`} {...register('name', { required: 'Full name is required', minLength: { value: 2, message: 'Enter your full name' } })} />
+                <input className={`input-field ${errors.name ? 'input-error' : ''}`} aria-invalid={Boolean(errors.name)} {...register('name', fieldRules.name)} />
                 {errors.name && <p className="error-text">{errors.name.message}</p>}
               </div>
               <div>
                 <label className="label-field">Mobile Number *</label>
-                <input className={`input-field ${errors.mobile ? 'input-error' : ''}`} {...register('mobile', { required: 'Mobile number is required', pattern: { value: /^[6-9]\d{9}$/, message: 'Enter a valid Indian mobile number' } })} />
+                <input type="tel" autoComplete="tel" className={`input-field ${errors.mobile ? 'input-error' : ''}`} aria-invalid={Boolean(errors.mobile)} {...register('mobile', fieldRules.mobile)} />
                 {errors.mobile && <p className="error-text">{errors.mobile.message}</p>}
               </div>
               <div>
                 <label className="label-field">Email Address *</label>
-                <input type="email" className={`input-field ${errors.email ? 'input-error' : ''}`} {...register('email', { required: 'Email is required', pattern: { value: /^\S+@\S+\.\S+$/, message: 'Enter a valid email address' } })} />
+                <input type="email" autoComplete="email" className={`input-field ${errors.email ? 'input-error' : ''}`} aria-invalid={Boolean(errors.email)} {...register('email', fieldRules.email)} />
                 {errors.email && <p className="error-text">{errors.email.message}</p>}
               </div>
               <div>
                 <label className="label-field">Gender *</label>
-                <select className={`input-field ${errors.gender ? 'input-error' : ''}`} {...register('gender', { required: 'Please select gender' })}>
+                <select className={`input-field ${errors.gender ? 'input-error' : ''}`} aria-invalid={Boolean(errors.gender)} {...register('gender', { required: 'Please select gender', validate: (value) => ['MALE', 'FEMALE', 'OTHER', 'PREFER_NOT_TO_SAY'].includes(value) || 'Please select a valid option.' })}>
                   <option value="">Select Gender</option>
                   <option value="MALE">Male</option>
                   <option value="FEMALE">Female</option>
@@ -205,12 +242,12 @@ export default function OjtApplyPage() {
             <div className="space-y-5">
               <div>
                 <label className="label-field">College / Institute Name *</label>
-                <input className={`input-field ${errors.college ? 'input-error' : ''}`} {...register('college', { required: 'College name is required' })} />
+                <input className={`input-field ${errors.college ? 'input-error' : ''}`} aria-invalid={Boolean(errors.college)} {...register('college', fieldRules.college)} />
                 {errors.college && <p className="error-text">{errors.college.message}</p>}
               </div>
               <div>
                 <label className="label-field">Course / Degree *</label>
-                <select className={`input-field ${errors.course ? 'input-error' : ''}`} {...register('course', { required: 'Course is required' })}>
+                <select className={`input-field ${errors.course ? 'input-error' : ''}`} aria-invalid={Boolean(errors.course)} {...register('course', { required: 'Course is required', validate: (value) => COURSES.includes(value) || 'Please select a valid course.' })}>
                   <option value="">Select Course</option>
                   {COURSES.map((c) => (
                     <option key={c} value={c}>{c}</option>
@@ -220,7 +257,7 @@ export default function OjtApplyPage() {
               </div>
               <div>
                 <label className="label-field">Academic Year *</label>
-                <input placeholder="e.g. 3rd Year / Final Year" className={`input-field ${errors.year ? 'input-error' : ''}`} {...register('year', { required: 'Academic year is required' })} />
+                <input placeholder="e.g. 3rd Year / Final Year" className={`input-field ${errors.year ? 'input-error' : ''}`} aria-invalid={Boolean(errors.year)} {...register('year', fieldRules.year)} />
                 {errors.year && <p className="error-text">{errors.year.message}</p>}
               </div>
             </div>
@@ -240,7 +277,7 @@ export default function OjtApplyPage() {
                           : 'border-slate-200 bg-white text-slate-700 hover:border-slate-300'
                       }`}
                     >
-                      <input type="radio" value={w} className="sr-only" {...register('durationWeeks', { required: 'Please select duration' })} />
+                      <input type="radio" value={w} className="sr-only" {...register('durationWeeks', { required: 'Please select duration', validate: (value) => DURATIONS.includes(Number(value)) || 'Please select a valid duration.' })} />
                       <span className="font-extrabold text-base">{w} Weeks</span>
                     </label>
                   ))}
@@ -260,7 +297,7 @@ export default function OjtApplyPage() {
                           : 'border-slate-200 bg-white text-slate-700 hover:border-slate-300'
                       }`}
                     >
-                      <input type="radio" value={m} className="sr-only" {...register('trainingMode', { required: 'Please select training mode' })} />
+                      <input type="radio" value={m} className="sr-only" {...register('trainingMode', { required: 'Please select training mode', validate: (value) => ['ONLINE', 'OFFLINE'].includes(value) || 'Please select a valid training mode.' })} />
                       <span className="font-semibold text-sm">{m === 'ONLINE' ? 'Online' : 'Offline'}</span>
                     </label>
                   ))}
@@ -270,7 +307,7 @@ export default function OjtApplyPage() {
 
               <div>
                 <label className="label-field">Training Track *</label>
-                <select className={`input-field ${errors.track ? 'input-error' : ''}`} {...register('track', { required: 'Please select track' })}>
+                <select className={`input-field ${errors.track ? 'input-error' : ''}`} aria-invalid={Boolean(errors.track)} {...register('track', { required: 'Please select track', validate: (value) => TRACKS.includes(value) || 'Please select a valid track.' })}>
                   <option value="">Select Training Track</option>
                   {TRACKS.map((t) => (
                     <option key={t} value={t}>{TRACK_LABELS[t]}</option>
@@ -338,11 +375,12 @@ export default function OjtApplyPage() {
               <div>
                 <label className="label-field">Referral Code (Optional)</label>
                 <div className="flex gap-2">
-                  <input className="input-field" {...register('referralCode')} placeholder="e.g. UPTECH2026" />
+                  <input className={`input-field ${errors.referralCode ? 'input-error' : ''}`} aria-invalid={Boolean(errors.referralCode)} {...register('referralCode', { validate: fieldRules.referralCode })} placeholder="e.g. UPTECH2026" />
                   <button type="button" onClick={checkReferral} disabled={checkingReferral} className="btn-secondary !px-5 !py-2.5 text-sm whitespace-nowrap">
                     {checkingReferral ? <Loader2 size={16} className="animate-spin" /> : 'Validate'}
                   </button>
                 </div>
+                {errors.referralCode && <p className="error-text">{errors.referralCode.message}</p>}
                 {referralStatus && (
                   <p className={`mt-1.5 text-sm font-medium ${referralStatus.valid ? 'text-emerald-600' : 'text-red-500'}`}>
                     {referralStatus.message}
@@ -387,12 +425,12 @@ export default function OjtApplyPage() {
             ) : <span />}
 
             {step < STEPS.length - 1 ? (
-              <button type="button" onClick={next} className="btn-primary !px-6 !py-3">
+              <button type="button" onClick={next} disabled={step === 2 && checkingResume} className="btn-primary !px-6 !py-3">
                 Next <ChevronRight size={18} />
               </button>
             ) : (
-              <button type="submit" disabled={submitting} className="btn-primary !px-8 !py-3">
-                {submitting ? <Loader2 size={18} className="animate-spin" /> : 'Submit OJT Application'}
+              <button type="submit" disabled={submitting || checkingResume || Boolean(resumeError)} className="btn-primary !px-8 !py-3">
+                {submitting ? <><Loader2 size={18} className="animate-spin" /> Submitting…</> : 'Submit OJT Application'}
               </button>
             )}
           </div>

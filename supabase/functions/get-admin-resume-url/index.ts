@@ -43,7 +43,9 @@ Deno.serve(async (req: Request) => {
     }
 
     const bucket = 'resumes'
-    const fileName = app.resume_file_name || `${applicationId}-resume.pdf`
+    const fileName = (app.resume_file_name || `${applicationId}-resume.pdf`)
+      .replace(/[^\p{L}\p{N}._ -]/gu, '_')
+      .slice(0, 255)
     const contentType = app.resume_content_type || 'application/pdf'
 
     if (mode === 'json') {

@@ -10,6 +10,7 @@ import {
 } from '../../services/adminService'
 import StatusBadge from '../../components/StatusBadge'
 import { formatDate, formatDateTime, STATUS_OPTIONS, STATUS_LABELS, TRACK_LABELS, DOMAIN_LABELS } from '../../utils/formatters'
+import { isSafePlainText } from '../../utils/validation'
 
 export default function AdminApplicationDetailPage() {
   const { id } = useParams()
@@ -17,6 +18,7 @@ export default function AdminApplicationDetailPage() {
   const [loading, setLoading] = useState(true)
   const [newStatus, setNewStatus] = useState('')
   const [remarks, setRemarks] = useState('')
+  const [remarksError, setRemarksError] = useState('')
   const [updating, setUpdating] = useState(false)
   const [viewingResume, setViewingResume] = useState(false)
   const [downloadingResume, setDownloadingResume] = useState(false)
@@ -37,9 +39,19 @@ export default function AdminApplicationDetailPage() {
   useEffect(() => { load() }, [id]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleUpdate = async () => {
+    if (!STATUS_OPTIONS.includes(newStatus)) {
+      toast.error('Please select a valid application status.')
+      return
+    }
+    const trimmedRemarks = remarks.trim()
+    if (trimmedRemarks.length > 1000 || !isSafePlainText(trimmedRemarks)) {
+      setRemarksError('Remarks must be 1,000 characters or fewer and contain plain text.')
+      return
+    }
+    setRemarksError('')
     setUpdating(true)
     try {
-      const { data } = await updateApplicationStatus(id, { status: newStatus, remarks: remarks || undefined })
+      const { data } = await updateApplicationStatus(id, { status: newStatus, remarks: trimmedRemarks || undefined })
       setDetail(data)
       setRemarks('')
       toast.success('Status updated.')
@@ -165,7 +177,8 @@ export default function AdminApplicationDetailPage() {
               <select
                 value={newStatus}
                 onChange={(e) => setNewStatus(e.target.value)}
-                className="input-field text-sm font-semibold"
+                aria-invalid={!STATUS_OPTIONS.includes(newStatus)}
+                className={`input-field text-sm font-semibold ${!STATUS_OPTIONS.includes(newStatus) ? 'input-error' : ''}`}
               >
                 {STATUS_OPTIONS.map((s) => (
                   <option key={s} value={s}>
@@ -179,19 +192,29 @@ export default function AdminApplicationDetailPage() {
               <label className="label-field font-bold text-slate-900">Admin Remarks (Optional)</label>
               <textarea
                 value={remarks}
-                onChange={(e) => setRemarks(e.target.value)}
+                onChange={(e) => {
+                  const value = e.target.value
+                  setRemarks(value)
+                  setRemarksError(value.trim().length > 1000 || !isSafePlainText(value)
+                    ? 'Remarks must be 1,000 characters or fewer and contain plain text.'
+                    : '')
+                }}
+                onBlur={() => setRemarks((value) => value.trim())}
+                maxLength={1000}
+                aria-invalid={Boolean(remarksError)}
                 placeholder="e.g. Cleared interview, offer sent..."
                 rows={3}
-                className="input-field text-sm"
+                className={`input-field text-sm ${remarksError ? 'input-error' : ''}`}
               />
+              {remarksError && <p className="error-text">{remarksError}</p>}
             </div>
 
             <button
               onClick={handleUpdate}
-              disabled={updating}
+              disabled={updating || Boolean(remarksError)}
               className="btn-navy w-full text-sm font-bold !py-3"
             >
-              {updating ? <Loader2 size={16} className="animate-spin" /> : 'Save Status Update'}
+              {updating ? <><Loader2 size={16} className="animate-spin" /> Saving…</> : 'Save Status Update'}
             </button>
           </div>
         </div>

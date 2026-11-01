@@ -9,10 +9,17 @@ Deno.serve(async (req: Request) => {
   if (req.method !== 'POST') return errorResponse('Method not allowed', 405)
 
   try {
-    const body = await req.json()
-    const loginId = typeof body.loginId === 'string' ? body.loginId.trim() : ''
-    const password = typeof body.password === 'string' ? body.password : ''
-    if (!loginId || !password || loginId.length > 100 || password.length > 1024) {
+    let body: unknown
+    try {
+      body = await req.json()
+    } catch {
+      return errorResponse('Invalid login ID or password.', 401)
+    }
+    if (!body || typeof body !== 'object' || Array.isArray(body)) return errorResponse('Invalid login ID or password.', 401)
+    const credentials = body as Record<string, unknown>
+    const loginId = typeof credentials.loginId === 'string' ? credentials.loginId.trim() : ''
+    const password = typeof credentials.password === 'string' ? credentials.password : ''
+    if (!loginId || !password.trim() || loginId.length > 100 || password.length > 1024 || /[\u0000-\u001f]/.test(loginId)) {
       return errorResponse('Invalid login ID or password.', 401)
     }
 

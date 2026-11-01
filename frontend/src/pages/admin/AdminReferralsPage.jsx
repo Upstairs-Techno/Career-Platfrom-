@@ -11,6 +11,7 @@ import {
 import EmptyState from '../../components/EmptyState'
 import ConfirmDialog from '../../components/ConfirmDialog'
 import { formatDate } from '../../utils/formatters'
+import { fieldRules, normalizeIndianMobile } from '../../utils/validation'
 
 function ReferralFormModal({ open, onClose, onSaved, editing, existingCodes = [] }) {
   const {
@@ -18,6 +19,8 @@ function ReferralFormModal({ open, onClose, onSaved, editing, existingCodes = []
     handleSubmit,
     reset,
     setValue,
+    setError,
+    setFocus,
     watch,
     formState: { errors },
   } = useForm({
@@ -31,6 +34,8 @@ function ReferralFormModal({ open, onClose, onSaved, editing, existingCodes = []
       maxUses: 100,
       active: true,
     },
+    mode: 'onTouched',
+    reValidateMode: 'onChange',
   })
   const [saving, setSaving] = useState(false)
 
@@ -87,7 +92,8 @@ function ReferralFormModal({ open, onClose, onSaved, editing, existingCodes = []
         (c) => c.code.toUpperCase() === normalizedCode && (!editing || c.id !== editing.id)
       )
       if (isDuplicate) {
-        toast.error('This referral code is already in use. Please use a unique code.')
+        setError('code', { type: 'validate', message: 'This referral code is already in use. Choose a unique code.' })
+        setFocus('code')
         return
       }
     }
@@ -96,7 +102,7 @@ function ReferralFormModal({ open, onClose, onSaved, editing, existingCodes = []
     try {
       const payload = {
         memberName: data.memberName.trim(),
-        mobileNumber: data.mobileNumber.trim(),
+        mobileNumber: normalizeIndianMobile(data.mobileNumber),
         email: data.email.trim().toLowerCase(),
         gender: data.gender,
         code: normalizedCode || undefined,
@@ -115,7 +121,12 @@ function ReferralFormModal({ open, onClose, onSaved, editing, existingCodes = []
       onSaved()
       onClose()
     } catch (err) {
-      toast.error(err.response?.data?.message || 'Failed to save referral code.')
+      const message = err.response?.data?.message || 'Failed to save referral code.'
+      if (/referral code.*already exists/i.test(message)) {
+        setError('code', { type: 'server', message: 'This referral code is already in use. Choose a unique code.' })
+        setFocus('code')
+      }
+      toast.error(message)
     } finally {
       setSaving(false)
     }
@@ -149,7 +160,7 @@ function ReferralFormModal({ open, onClose, onSaved, editing, existingCodes = []
         </div>
 
         {/* Modal Form */}
-        <form onSubmit={handleSubmit(onSubmit)} className="mt-5 space-y-4">
+        <form noValidate onSubmit={handleSubmit(onSubmit)} className="mt-5 space-y-4">
           {/* 1. Marketing Team Member Name */}
           <div>
             <label className="label-field font-bold text-slate-900">
@@ -159,10 +170,8 @@ function ReferralFormModal({ open, onClose, onSaved, editing, existingCodes = []
               type="text"
               className={`input-field ${errors.memberName ? 'input-error' : ''}`}
               placeholder="e.g., Rajesh Kumar"
-              {...register('memberName', {
-                required: 'Team member name is required',
-                minLength: { value: 2, message: 'Name must have at least 2 characters' },
-              })}
+              aria-invalid={Boolean(errors.memberName)}
+              {...register('memberName', fieldRules.name)}
             />
             {errors.memberName && <p className="error-text">{errors.memberName.message}</p>}
           </div>
@@ -176,14 +185,9 @@ function ReferralFormModal({ open, onClose, onSaved, editing, existingCodes = []
               <input
                 type="tel"
                 className={`input-field ${errors.mobileNumber ? 'input-error' : ''}`}
-                placeholder="10-digit phone number"
-                {...register('mobileNumber', {
-                  required: 'Mobile number is required',
-                  pattern: {
-                    value: /^[0-9+\-\s]{8,15}$/,
-                    message: 'Enter a valid phone number',
-                  },
-                })}
+                placeholder="10-digit number or +91"
+                aria-invalid={Boolean(errors.mobileNumber)}
+                {...register('mobileNumber', fieldRules.mobile)}
               />
               {errors.mobileNumber && <p className="error-text">{errors.mobileNumber.message}</p>}
             </div>
@@ -196,13 +200,8 @@ function ReferralFormModal({ open, onClose, onSaved, editing, existingCodes = []
                 type="email"
                 className={`input-field ${errors.email ? 'input-error' : ''}`}
                 placeholder="member@upstairstechno.com"
-                {...register('email', {
-                  required: 'Email ID is required',
-                  pattern: {
-                    value: /^[^\s@]+@[^\s@]+\.[^\s@]+$/,
-                    message: 'Enter a valid email address',
-                  },
-                })}
+                aria-invalid={Boolean(errors.email)}
+                {...register('email', fieldRules.email)}
               />
               {errors.email && <p className="error-text">{errors.email.message}</p>}
             </div>
@@ -215,7 +214,11 @@ function ReferralFormModal({ open, onClose, onSaved, editing, existingCodes = []
             </label>
             <select
               className={`input-field ${errors.gender ? 'input-error' : ''}`}
-              {...register('gender', { required: 'Please select gender' })}
+              aria-invalid={Boolean(errors.gender)}
+              {...register('gender', {
+                required: 'Please select gender.',
+                validate: (value) => ['Male', 'Female', 'Other', 'Prefer not to say'].includes(value) || 'Please select a valid option.',
+              })}
             >
               <option value="">Select Gender</option>
               <option value="Male">Male</option>
@@ -244,8 +247,10 @@ function ReferralFormModal({ open, onClose, onSaved, editing, existingCodes = []
               type="text"
               className={`input-field uppercase tracking-wider font-mono font-bold ${errors.code ? 'input-error' : ''}`}
               placeholder="Leave blank to auto-generate (e.g. UPTECH8A)"
-              {...register('code')}
+              aria-invalid={Boolean(errors.code)}
+              {...register('code', { validate: fieldRules.referralCode })}
             />
+            {errors.code && <p className="error-text">{errors.code.message}</p>}
             <p className="mt-1 text-[11px] text-slate-500">
               Assigned specifically to this team member for candidate campaign tracking.
             </p>

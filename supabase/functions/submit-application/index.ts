@@ -8,18 +8,13 @@ import { corsResponse, errorResponse, handleOptions, CORS_HEADERS } from '../_sh
 import { createServiceClient } from '../_shared/auth.ts'
 import {
   validateOjtApplication, validateInternshipApplication,
-  OjtApplicationInput, InternshipApplicationInput,
+  OjtApplicationInput, InternshipApplicationInput, normalizeIndianMobile,
+  validateResumeFile,
 } from '../_shared/validation.ts'
 import { sendApplicationReceived } from '../_shared/email.ts'
 import { dispatchApplicationNotifications } from '../_shared/notification-outbox.ts'
 
-const MAX_RESUME_BYTES = 5 * 1024 * 1024 // 5 MB
 const ALLOWED_EXTENSIONS = ['.pdf', '.doc', '.docx']
-const ALLOWED_MIME_TYPES = [
-  'application/pdf',
-  'application/msword',
-  'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-]
 
 Deno.serve(async (req: Request) => {
   if (req.method === 'OPTIONS') return handleOptions()
@@ -29,6 +24,7 @@ Deno.serve(async (req: Request) => {
   try {
     const contentType = req.headers.get('content-type') || ''
     const isMultipart = contentType.includes('multipart/form-data')
+    if (!isMultipart && !contentType.includes('application/json')) return errorResponse('Use multipart form data or JSON.', 415)
     const url = new URL(req.url)
     const type = url.searchParams.get('type') // 'ojt' or 'internship'
 
@@ -59,13 +55,18 @@ Deno.serve(async (req: Request) => {
         if (!body || typeof body !== 'object' || Array.isArray(body)) {
           return errorResponse('Request body must be a JSON object.', 400)
         }
-        fields = Object.fromEntries(
-          Object.entries(body).map(([key, value]) => [key, value == null ? '' : String(value)]),
-        )
+        fields = Object.fromEntries(Object.entries(body).map(([key, value]) => [
+          key,
+          typeof value === 'string' ? value.trim() : typeof value === 'number' ? String(value) : '',
+        ]))
       } catch {
         return errorResponse('Invalid JSON request body.', 400)
       }
     }
+
+    fields = Object.fromEntries(Object.entries(fields).map(([key, value]) => [key, value.trim()]))
+    if (fields.email) fields.email = fields.email.toLowerCase()
+    const numericField = (value: string | undefined) => /^\d+$/.test(value || '') ? Number(value) : Number.NaN
 
     // ── Validate input ──────────────────────────────────────────────────────
     step = 'input validation'
@@ -80,7 +81,7 @@ Deno.serve(async (req: Request) => {
         college:       (fields.college || '').trim(),
         course:        (fields.course || '').trim(),
         year:          (fields.year || '').trim(),
-        durationWeeks: parseInt(fields.durationWeeks || '0', 10),
+        durationWeeks: numericField(fields.durationWeeks),
         trainingMode:  (fields.trainingMode || '').trim(),
         track:         (fields.track || '').trim(),
         referralCode:  (fields.referralCode || '').trim() || undefined,
@@ -95,7 +96,7 @@ Deno.serve(async (req: Request) => {
         college:        (fields.college || '').trim(),
         course:         (fields.course || '').trim(),
         year:           (fields.year || '').trim(),
-        durationMonths: parseInt(fields.durationMonths || '0', 10),
+        durationMonths: numericField(fields.durationMonths),
         mode:           (fields.mode || '').trim(),
         domain:         (fields.domain || '').trim(),
         referralCode:   (fields.referralCode || '').trim() || undefined,
@@ -104,26 +105,21 @@ Deno.serve(async (req: Request) => {
     }
 
     if (validationErrors.length > 0) {
-      return corsResponse({ errors: validationErrors, message: validationErrors[0].message }, 400)
+      return corsResponse({ errors: validationErrors, message: validationErrors[0].message }, 422)
     }
+    fields.mobile = normalizeIndianMobile(fields.mobile)
 
     // ── Validate resume (if provided) ───────────────────────────────────────
     let validatedResume: { file: File; ext: string; contentType: string } | null = null
-    if (resumeFile && resumeFile.size > 0) {
-      if (resumeFile.size > MAX_RESUME_BYTES) {
-        return errorResponse('Resume file size exceeds the 5 MB limit. Please upload a smaller file.', 400)
-      }
+    if (resumeFile) {
+      const fileError = await validateResumeFile(resumeFile)
+      if (fileError) return errorResponse(fileError, 400)
       const nameParts = (resumeFile.name || '').toLowerCase().split('.')
       const ext = '.' + (nameParts.pop() || '')
-      if (!ALLOWED_EXTENSIONS.includes(ext)) {
-        return errorResponse('Invalid file format. Only PDF, DOC, and DOCX files are allowed.', 400)
-      }
-      let contentType = resumeFile.type || ''
-      if (!contentType || !ALLOWED_MIME_TYPES.includes(contentType)) {
-        contentType = ext === '.pdf' ? 'application/pdf'
-          : ext === '.doc' ? 'application/msword'
-          : 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
-      }
+      if (!ALLOWED_EXTENSIONS.includes(ext)) return errorResponse('Invalid resume file extension.', 400)
+      const contentType = ext === '.pdf' ? 'application/pdf'
+        : ext === '.doc' ? 'application/msword'
+        : 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
       validatedResume = { file: resumeFile, ext, contentType }
     }
 
@@ -186,7 +182,7 @@ Deno.serve(async (req: Request) => {
     // ── Upload resume to Supabase Storage ───────────────────────────────────
     if (validatedResume) {
       step = 'resume storage upload'
-      const storagePath = `applications/${crypto.randomUUID()}/resume${validatedResume.ext}`
+      const storagePath = `applications/${applicationId}/${applicationId}-resume${validatedResume.ext}`
       const { error: uploadError } = await supabase.storage
         .from('resumes')
         .upload(storagePath, validatedResume.file, {
@@ -203,7 +199,7 @@ Deno.serve(async (req: Request) => {
         const { error: metadataError } = await supabase.rpc('update_resume_path', {
           p_application_id:       applicationId,
           p_resume_path:          storagePath,
-          p_resume_file_name:     validatedResume.file.name,
+          p_resume_file_name:     safeResumeFileName(validatedResume.file.name),
           p_resume_content_type:  validatedResume.contentType,
           p_resume_file_size:     validatedResume.file.size,
         })
@@ -243,6 +239,10 @@ Deno.serve(async (req: Request) => {
     return errorResponse('An unexpected error occurred. Please try again.', 500)
   }
 })
+
+function safeResumeFileName(value: string): string {
+  return value.replace(/[^\p{L}\p{N}._ -]/gu, '_').slice(0, 255) || 'resume'
+}
 
 function _handleDbError(error: { message: string; code?: string }, step: string): Response {
   const msg = error.message || ''

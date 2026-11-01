@@ -9,6 +9,13 @@ import { requireAdmin, createServiceClient, AuthError } from '../_shared/auth.ts
 import { APPLICATION_STATUSES } from '../_shared/validation.ts'
 import { sendSelectionNotification, sendCompletionNotification } from '../_shared/email.ts'
 
+function hasUnsafeText(value: string): boolean {
+  return /[<>]/.test(value) || [...value].some((character) => {
+    const code = character.charCodeAt(0)
+    return code < 32 || code === 127
+  })
+}
+
 Deno.serve(async (req: Request) => {
   if (req.method === 'OPTIONS') return handleOptions()
   if (req.method !== 'PUT' && req.method !== 'PATCH') {
@@ -25,15 +32,24 @@ Deno.serve(async (req: Request) => {
       return errorResponse("Query parameter 'id' is required.", 400)
     }
 
-    const body = await req.json()
-    const newStatus: string = (body.status || '').trim().toUpperCase()
-    const remarks: string = (body.remarks || '').trim()
+    let body: unknown
+    try {
+      body = await req.json()
+    } catch {
+      return errorResponse('The submitted JSON is malformed.', 400)
+    }
+    if (!body || typeof body !== 'object' || Array.isArray(body)) return errorResponse('Invalid update data.', 400)
+    const values = body as Record<string, unknown>
+    const newStatus = typeof values.status === 'string' ? values.status.trim().toUpperCase() : ''
+    const remarks = typeof values.remarks === 'string' ? values.remarks.trim() : ''
+    if (values.remarks !== undefined && typeof values.remarks !== 'string') return errorResponse('Remarks must be text.', 422)
+    if (remarks.length > 1000 || hasUnsafeText(remarks)) return errorResponse('Remarks must be 1,000 characters or fewer and contain plain text.', 422)
 
     if (!(APPLICATION_STATUSES as readonly string[]).includes(newStatus)) {
       return errorResponse(`Invalid status. Must be one of: ${APPLICATION_STATUSES.join(', ')}.`, 400)
     }
 
-    if (!applicationId.startsWith('OJT-') && !applicationId.startsWith('INT-')) {
+    if (!/^(OJT|INT)-\d{4}-\d{5}$/.test(applicationId)) {
       return errorResponse('Application not found.', 404)
     }
 
