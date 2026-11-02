@@ -215,3 +215,63 @@ export async function sendCompletionNotification(
 
   await sendEmail({ to: toEmail, subject, html, text })
 }
+
+/** Sent when an admin requests a password reset link */
+export async function sendPasswordResetEmail(
+  toEmail: string,
+  adminName: string,
+  resetLink: string,
+): Promise<void> {
+  const safeName = escapeHtml(adminName || 'Administrator')
+  const safeResetLink = escapeHtml(resetLink)
+  const subject = 'UPSTAIRS TECHNO — Password Reset Request'
+  const text = `Hello ${adminName || 'Administrator'},\n\nWe received a request to reset your password for your UPSTAIRS TECHNO Admin account.\n\nPlease reset your password using the secure link below:\n${resetLink}\n\nThis link is valid for 1 hour. If you did not make this request, you can safely ignore this email.\n\nRegards,\nUPSTAIRS TECHNO Support Team`
+
+  const html = `
+    <div style="font-family:'Segoe UI',Roboto,Helvetica,Arial,sans-serif;max-width:580px;margin:0 auto;padding:32px 24px;background-color:#ffffff;color:#1e293b;border:1px solid #e2e8f0;border-radius:16px;">
+      <div style="text-align:center;margin-bottom:28px;">
+        <h2 style="color:#0077EE;font-size:24px;font-weight:800;letter-spacing:1px;margin:0 0 4px 0;">UPSTAIRS TECHNO</h2>
+        <span style="display:inline-block;font-size:11px;font-weight:700;letter-spacing:2px;text-transform:uppercase;color:#64748b;background:#f1f5f9;padding:4px 10px;border-radius:999px;">Admin Portal</span>
+      </div>
+
+      <div style="border-top:1px solid #f1f5f9;padding-top:24px;">
+        <h3 style="color:#0f172a;font-size:18px;font-weight:700;margin:0 0 12px 0;">Password Reset Request</h3>
+        <p style="color:#475569;font-size:14px;line-height:1.6;margin:0 0 16px 0;">
+          Hello <strong>${safeName}</strong>,
+        </p>
+        <p style="color:#475569;font-size:14px;line-height:1.6;margin:0 0 24px 0;">
+          We received a request to reset the password for your administrator account. Click the button below to choose a new, secure password:
+        </p>
+
+        <div style="text-align:center;margin:32px 0;">
+          <a href="${safeResetLink}" style="display:inline-block;background:linear-gradient(135deg, #0077EE 0%, #0055BB 100%);color:#ffffff;font-size:14px;font-weight:700;padding:14px 28px;text-decoration:none;border-radius:12px;box-shadow:0 4px 12px rgba(0, 119, 238, 0.35);">
+            Reset Admin Password
+          </a>
+        </div>
+
+        <div style="background-color:#f8fafc;border-left:4px solid #0077EE;padding:14px 16px;border-radius:8px;margin:24px 0;">
+          <p style="color:#64748b;font-size:13px;line-height:1.5;margin:0;">
+            ⏳ <strong>Notice:</strong> This recovery link is time-limited and will expire in <strong>1 hour</strong>. For your security, do not forward or share this email with anyone.
+          </p>
+        </div>
+
+        <p style="color:#94a3b8;font-size:12px;line-height:1.5;margin:24px 0 0 0;">
+          If the button above does not work, copy and paste this URL into your browser:<br/>
+          <a href="${safeResetLink}" style="color:#0077EE;word-break:break-all;">${safeResetLink}</a>
+        </p>
+
+        <p style="color:#94a3b8;font-size:12px;line-height:1.5;margin:16px 0 0 0;">
+          If you did not request a password reset, you can safely ignore this email. Your existing credentials remain unchanged.
+        </p>
+      </div>
+
+      <div style="border-top:1px solid #f1f5f9;margin-top:32px;padding-top:20px;text-align:center;">
+        <p style="color:#94a3b8;font-size:12px;margin:0;">
+          &copy; ${new Date().getFullYear()} UPSTAIRS TECHNO. All rights reserved.
+        </p>
+      </div>
+    </div>
+  `
+
+  await sendEmail({ to: toEmail, subject, html, text })
+}

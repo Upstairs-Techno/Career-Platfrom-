@@ -1,5 +1,6 @@
 import React from 'react'
 import { Routes, Route, Navigate } from 'react-router-dom'
+import { useAuth } from './context/AuthContext'
 
 import PublicLayout from './layouts/PublicLayout'
 import AdminLayout from './layouts/AdminLayout'
@@ -14,6 +15,7 @@ import ApplicationSuccessPage from './pages/ApplicationSuccessPage'
 import NotFoundPage from './pages/NotFoundPage'
 
 import AdminLoginPage from './pages/admin/AdminLoginPage'
+import AdminResetPasswordPage from './pages/admin/AdminResetPasswordPage'
 import AdminDashboardPage from './pages/admin/AdminDashboardPage'
 import AdminOjtApplicationsPage from './pages/admin/AdminOjtApplicationsPage'
 import AdminInternshipApplicationsPage from './pages/admin/AdminInternshipApplicationsPage'
@@ -22,6 +24,14 @@ import AdminReferralsPage from './pages/admin/AdminReferralsPage'
 import AdminStudentsPage from './pages/admin/AdminStudentsPage'
 import AdminReportsPage from './pages/admin/AdminReportsPage'
 import AdminSettingsPage from './pages/admin/AdminSettingsPage'
+
+function AdminRoot() {
+  const { isAuthenticated } = useAuth()
+  if (!isAuthenticated) {
+    return <AdminLoginPage />
+  }
+  return <Navigate to="/admin/dashboard" replace />
+}
 
 export default function App() {
   return (
@@ -36,8 +46,10 @@ export default function App() {
         <Route path="/application-success" element={<ApplicationSuccessPage />} />
       </Route>
 
-      {/* Admin auth */}
-      <Route path="/admin/login" element={<AdminLoginPage />} />
+      {/* Admin auth & password reset */}
+      <Route path="/admin" element={<AdminRoot />} />
+      <Route path="/admin/login" element={<Navigate to="/admin" replace />} />
+      <Route path="/admin/reset-password" element={<AdminResetPasswordPage />} />
 
       {/* Admin dashboard (protected) */}
       <Route
@@ -48,7 +60,6 @@ export default function App() {
           </ProtectedRoute>
         }
       >
-        <Route index element={<Navigate to="dashboard" replace />} />
         <Route path="dashboard" element={<AdminDashboardPage />} />
         <Route path="ojt" element={<AdminOjtApplicationsPage />} />
         <Route path="internships" element={<AdminInternshipApplicationsPage />} />

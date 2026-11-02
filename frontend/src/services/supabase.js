@@ -44,9 +44,14 @@ export async function invokeFunction(name, options = {}) {
     ? 'Your session has expired. Please login again.'
     : message
 
-  if (status === 401 && supabase.auth && !window.location.pathname.includes('/admin/login')) {
+  if (
+    status === 401 &&
+    supabase.auth &&
+    window.location.pathname !== '/admin' &&
+    !window.location.pathname.startsWith('/admin/reset-password')
+  ) {
     await supabase.auth.signOut()
-    if (window.location.pathname.startsWith('/admin')) window.location.href = '/admin/login'
+    if (window.location.pathname.startsWith('/admin')) window.location.href = '/admin'
   }
 
   throw normalized

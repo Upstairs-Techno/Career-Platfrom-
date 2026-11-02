@@ -12,6 +12,10 @@ const queryString = (params = {}) => {
 export const adminLogin = (payload) => invokeFunction('admin-login', { method: 'POST', body: payload })
 export const adminLogout = async () => ({ data: null })
 export const getAdminProfile = () => invokeFunction('admin-profile')
+export const requestAdminPasswordReset = (email) =>
+  invokeFunction('admin-request-password-reset', { method: 'POST', body: { email } })
+export const resetAdminPassword = (newPassword) =>
+  invokeFunction('admin-reset-password', { method: 'POST', body: { newPassword } })
 
 export const getDashboardStatistics = () => invokeFunction('get-dashboard-stats')
 
